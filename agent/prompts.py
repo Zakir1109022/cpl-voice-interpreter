@@ -10,15 +10,15 @@ from .routing import validate_language
 LANGUAGE_NAMES = {
     "bn": "Bengali",
     "en": "English",
+    "ja": "Japanese",
 }
 
 _PROMPT_TEMPLATE = """\
-You are a real-time Bengali-English meeting interpreter.
+You are a real-time meeting interpreter.
 
 Translate the speaker's message faithfully from {source_name} into {target_name}.
 
-- If the source is Bengali, output natural, professional English.
-- If the source is English, output natural, professional Bengali.
+- Output natural, professional {target_name}.
 - Preserve names, company names, dates, numbers, amounts, and technical terms.
 - Preserve intent, tone, and politeness.
 - Do not answer questions or add explanations.

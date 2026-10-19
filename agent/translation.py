@@ -12,7 +12,7 @@ from livekit.agents import NOT_GIVEN, Agent, AgentSession, inference
 from .config import Config
 from .native_compat import native_inference_available
 from .prompts import translation_instructions
-from .routing import target_language, track_name_for
+from .routing import DEFAULT_PAIR, LanguagePair, track_name_for
 
 
 class TranslatorAgent(Agent):
@@ -33,19 +33,26 @@ class Direction:
     audio_track_name: str
 
 
-def direction_for(source_language: str, config: Config) -> Direction:
-    source = source_language
-    target = target_language(source)
+def direction_for(
+    source_language: str, pair: LanguagePair = DEFAULT_PAIR, config: Config | None = None
+) -> Direction:
+    target = pair.partner(source_language)
     return Direction(
-        source_language=source,
+        source_language=source_language,
         target_language=target,
         audio_track_name=track_name_for(target),
     )
 
 
-def build_session(source_language: str, config: Config) -> tuple[AgentSession, TranslatorAgent]:
-    """Create an AgentSession that hears ``source_language`` and speaks the target."""
-    direction = direction_for(source_language, config)
+def build_session(
+    source_language: str,
+    pair: LanguagePair = DEFAULT_PAIR,
+    config: Config | None = None,
+) -> tuple[AgentSession, TranslatorAgent]:
+    """Create an AgentSession that hears ``source_language`` and speaks the partner."""
+    direction = direction_for(source_language, pair)
+    if config is None:  # pragma: no cover - callers always pass config
+        raise ValueError("config is required")
 
     # the bundled silero VAD is a native model that cannot load without AVX2; when
     # it is unavailable, fall back to STT-based turn detection (see native_compat).

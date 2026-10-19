@@ -8,21 +8,33 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 DEFAULT_STT_MODEL = "deepgram/nova-3"
 DEFAULT_LLM_MODEL = "openai/gpt-4o-mini"
 DEFAULT_TTS_MODEL = "cartesia/sonic-3"
 DEFAULT_TTS_VOICE_EN = "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
 DEFAULT_TTS_VOICE_BN = "f786b574-daa5-4673-aa0c-cbe3e8534c02"
-DEFAULT_AGENT_NAME = "bengali-english-interpreter"
+DEFAULT_TTS_VOICE_JA = "cb21b4af-0e46-44f7-9128-51be7f898311"
+DEFAULT_AGENT_NAME = "meeting-interpreter"
 DEFAULT_TOKEN_TTL_SECONDS = 3600
+
+# language code -> env var name that overrides its TTS voice
+_VOICE_VARS: Mapping[str, tuple[str, str]] = {
+    "en": ("TTS_VOICE_EN", DEFAULT_TTS_VOICE_EN),
+    "bn": ("TTS_VOICE_BN", DEFAULT_TTS_VOICE_BN),
+    "ja": ("TTS_VOICE_JA", DEFAULT_TTS_VOICE_JA),
+}
 
 _REQUIRED_VARS = ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET")
 
 
 class ConfigError(RuntimeError):
     """Raised when required configuration is missing or invalid."""
+
+
+def _default_voices() -> dict[str, str]:
+    return {language: default for language, (_, default) in _VOICE_VARS.items()}
 
 
 @dataclass(frozen=True)
@@ -33,19 +45,15 @@ class Config:
     stt_model: str = DEFAULT_STT_MODEL
     llm_model: str = DEFAULT_LLM_MODEL
     tts_model: str = DEFAULT_TTS_MODEL
-    tts_voice_en: str = DEFAULT_TTS_VOICE_EN
-    tts_voice_bn: str = DEFAULT_TTS_VOICE_BN
-    bengali_language: str = "bn"
-    english_language: str = "en"
+    tts_voices: Mapping[str, str] = field(default_factory=_default_voices)
     agent_name: str = DEFAULT_AGENT_NAME
     token_ttl_seconds: int = DEFAULT_TOKEN_TTL_SECONDS
 
     def voice_for(self, language: str) -> str:
-        if language == self.bengali_language:
-            return self.tts_voice_bn
-        if language == self.english_language:
-            return self.tts_voice_en
-        raise ConfigError(f"No TTS voice configured for language {language!r}")
+        try:
+            return self.tts_voices[language]
+        except KeyError:
+            raise ConfigError(f"No TTS voice configured for language {language!r}") from None
 
 
 def load_config(env: Mapping[str, str] | None = None) -> Config:
@@ -76,6 +84,11 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
     if ttl <= 0:
         raise ConfigError("TOKEN_TTL_SECONDS must be a positive integer.")
 
+    voices = {
+        language: (source.get(var) or "").strip() or default
+        for language, (var, default) in _VOICE_VARS.items()
+    }
+
     return Config(
         livekit_url=url,
         livekit_api_key=source["LIVEKIT_API_KEY"].strip(),
@@ -83,10 +96,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         stt_model=(source.get("STT_MODEL") or "").strip() or DEFAULT_STT_MODEL,
         llm_model=(source.get("LLM_MODEL") or "").strip() or DEFAULT_LLM_MODEL,
         tts_model=(source.get("TTS_MODEL") or "").strip() or DEFAULT_TTS_MODEL,
-        tts_voice_en=(source.get("TTS_VOICE_EN") or "").strip() or DEFAULT_TTS_VOICE_EN,
-        tts_voice_bn=(source.get("TTS_VOICE_BN") or "").strip() or DEFAULT_TTS_VOICE_BN,
-        bengali_language=(source.get("BENGALI_LANGUAGE") or "").strip() or "bn",
-        english_language=(source.get("ENGLISH_LANGUAGE") or "").strip() or "en",
+        tts_voices=voices,
         agent_name=(source.get("AGENT_NAME") or "").strip() or DEFAULT_AGENT_NAME,
         token_ttl_seconds=ttl,
     )

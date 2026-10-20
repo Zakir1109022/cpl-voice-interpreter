@@ -5,8 +5,9 @@ description = "Real-time bidirectional Bengali <-> English meeting interpreter b
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "livekit-agents~=1.8",
+    "livekit-agents[cartesia]~=1.8",
     "livekit-api>=1.2",
+    "httpx2>=2.12",
     "python-dotenv>=1.0",
 ]
 

@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from livekit.agents import NOT_GIVEN, Agent, AgentSession, inference
+from livekit.agents import NOT_GIVEN, Agent, AgentSession, inference, tts
 
 from .config import Config
+from .dynamic_tts import DynamicVoiceTTS, cartesia_voice_factory
 from .native_compat import native_inference_available
 from .prompts import translation_instructions
 from .routing import DEFAULT_PAIR, LanguagePair, track_name_for
@@ -58,14 +59,24 @@ def build_session(
     # it is unavailable, fall back to STT-based turn detection (see native_compat).
     native_vad = native_inference_available()
 
+    fallback_tts = inference.TTS(
+        model=config.tts_model,
+        voice=config.voice_for(direction.target_language),
+        language=direction.target_language,
+    )
+    # With voice cloning on, sessions start on the fallback voice and swap to the
+    # speaker's clone once enrollment finishes (see agent/session.py).
+    tts_node: tts.TTS = fallback_tts
+    if config.voice_cloning_enabled:
+        tts_node = DynamicVoiceTTS(
+            fallback_tts,
+            voice_factory=cartesia_voice_factory(config, direction.target_language),
+        )
+
     session = AgentSession(
         stt=inference.STT(model=config.stt_model, language=direction.source_language),
         llm=inference.LLM(model=config.llm_model),
-        tts=inference.TTS(
-            model=config.tts_model,
-            voice=config.voice_for(direction.target_language),
-            language=direction.target_language,
-        ),
+        tts=tts_node,
         vad=NOT_GIVEN if native_vad else None,
         turn_detection=NOT_GIVEN if native_vad else "stt",
     )

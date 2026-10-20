@@ -49,6 +49,8 @@ const STATUS_PRESENTATION: Record<string, { title: string; tone: StatusTone }> =
   language_error: { title: "Language needed", tone: "warning" },
   session_start_error: { title: "Interpreter could not start", tone: "error" },
   pipeline_error: { title: "Interpretation problem", tone: "error" },
+  voice_cloned: { title: "Your voice profile is ready", tone: "success" },
+  voice_cloning_error: { title: "Using a standard voice", tone: "warning" },
 };
 
 function isLanguage(value: unknown): value is Language {
@@ -436,7 +438,7 @@ function RoomContent() {
       </section>
 
       <div className="shell-footer">
-        <span>Translated voices you hear are AI-generated.</span>
+        <span>Translated voices are AI-generated; cloned voices are only created with each speaker&apos;s consent.</span>
         <span>Signed in as {displayNameOf(local.localParticipant)}</span>
       </div>
 
@@ -449,6 +451,7 @@ export default function Home() {
   const [identity, setIdentity] = useState("");
   const [pair, setPair] = useState<PairCode>(DEFAULT_PAIR);
   const [language, setLanguage] = useState<Language>(languagesOf(DEFAULT_PAIR)[0]);
+  const [voiceConsent, setVoiceConsent] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -480,7 +483,7 @@ export default function Home() {
       const res = await fetch("/api/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identity: entered, language, pair }),
+        body: JSON.stringify({ identity: entered, language, pair, voiceConsent }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -563,6 +566,27 @@ export default function Home() {
               </option>
             ))}
           </select>
+        </label>
+        <label
+          style={{
+            display: "flex",
+            gap: "0.6rem",
+            alignItems: "flex-start",
+            fontSize: "0.85rem",
+            lineHeight: 1.45,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={voiceConsent}
+            onChange={(e) => setVoiceConsent(e.target.checked)}
+            style={{ marginTop: "0.2rem" }}
+          />
+          <span>
+            Create my translated voice: a short sample of my speech is sent to our
+            speech provider to make translations sound like me. I consent to this.
+            Without it, translations use a standard voice.
+          </span>
         </label>
         <button type="submit" className="btn btn--primary" disabled={loading} style={{ justifyContent: "center" }}>
           {loading ? "Joining…" : "Join Room"}

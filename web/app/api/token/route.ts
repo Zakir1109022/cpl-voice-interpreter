@@ -128,6 +128,10 @@ export async function POST(request: Request) {
   const language = asString(payload.language).toLowerCase();
   const room = asString(payload.room) || asString(process.env.LIVEKIT_ROOM_NAME) || DEFAULT_ROOM_NAME;
 
+  // Voice cloning consent (join-screen checkbox). Only an explicit opt-in stamps
+  // "true"; the agent never enrolls a participant without it.
+  const voiceConsent = payload.voiceConsent === true || payload.voiceConsent === "true";
+
   const requestedPair = asString(payload.pair)
     ? normalizePair(asString(payload.pair))
     : asString(process.env.LANGUAGE_PAIR)
@@ -180,7 +184,7 @@ export async function POST(request: Request) {
       identity,
       name: identity,
       ttl: tokenTtlSeconds(),
-      attributes: { language, pair },
+      attributes: { language, pair, voice_cloning_consent: voiceConsent ? "true" : "false" },
     });
     token.addGrant({
       roomJoin: true,

@@ -683,7 +683,8 @@ name = "cpl-meeting-interpreter-agent"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "livekit-agents" },
+    { name = "httpx2" },
+    { name = "livekit-agents", extra = ["cartesia"] },
     { name = "livekit-api" },
     { name = "python-dotenv" },
 ]
@@ -697,7 +698,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "livekit-agents", specifier = "~=1.8" },
+    { name = "httpx2", specifier = ">=2.12" },
+    { name = "livekit-agents", extras = ["cartesia"], specifier = "~=1.8" },
     { name = "livekit-api", specifier = ">=1.2" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]
@@ -1212,6 +1214,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d9/0b/0af975caf0673edb7beea5f8d25a7317f4e7d61e8530533adeb500ce301a/livekit_agents-1.8.8-py3-none-any.whl", hash = "sha256:b5c8f79381c822412f6a42e4b4b4cc472efaf43a9ba11f2d6feef10380dc77a6", size = 2944277, upload-time = "2026-10-15T06:07:00.131Z" },
 ]
 
+[package.optional-dependencies]
+cartesia = [
+    { name = "livekit-plugins-cartesia" },
+]
+
 [[package]]
 name = "livekit-api"
 version = "1.2.2"
@@ -1292,6 +1299,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/82/2e/7b4ec0de0e5f1ef4c2f441a3047dda950c11d819fb1804e0a13c6ef68317/livekit_local_inference-0.2.7-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f122e205899c5393ef4a710beedfece7a166649afa5ccbdc3cca61f2df113efa", size = 34835765, upload-time = "2026-08-18T09:47:08.974Z" },
     { url = "https://files.pythonhosted.org/packages/01/c9/5cee5031e9ac2b545f6a68d2442bb02a3a6564f298d91f321448c1b59944/livekit_local_inference-0.2.7-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7a97bc2932b73f72c5246cb8350cf2cd7d21fc6237053fc7c1ac645352ed0f3f", size = 34876770, upload-time = "2026-08-18T09:47:11.379Z" },
     { url = "https://files.pythonhosted.org/packages/7f/72/c2c956d1797bd944449fd90945ceea5dded222a54b2df8c967c77440298f/livekit_local_inference-0.2.7-cp314-cp314-win_amd64.whl", hash = "sha256:168c2f2dd55ee6dd94fd7caae0ff73e4875e25aa418df819905fd339de1de4cd", size = 34882427, upload-time = "2026-08-18T09:47:13.983Z" },
+]
+
+[[package]]
+name = "livekit-plugins-cartesia"
+version = "1.8.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "livekit-agents" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cf/8f/d2baad0a53cc9819be473cedf7a44973d236b4b4d7f184a729f4fa090da4/livekit_plugins_cartesia-1.8.8.tar.gz", hash = "sha256:2e2c41c83e0b5971797005f25eff87b6d036b9b7dfec4031f8c5bb43eb473af5", size = 19658, upload-time = "2026-10-15T06:07:23.167Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/c7/7b2cd62d28beaed3e1e927c566e84b78ec07275c4610fcb512f0388b775d/livekit_plugins_cartesia-1.8.8-py3-none-any.whl", hash = "sha256:bf9c1a7f44a68239488366450f788c849a793403736acd0e662423e9a6b649c9", size = 27215, upload-time = "2026-10-15T06:07:21.91Z" },
 ]
 
 [[package]]

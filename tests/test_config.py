@@ -129,3 +129,49 @@ class TestValuesAndDefaults:
             assert API_KEY not in text
         else:  # pragma: no cover
             raise AssertionError("expected ConfigError")
+
+
+class TestVoiceCloning:
+    def test_disabled_by_default(self) -> None:
+        config = load_config(base_env())
+        assert config.voice_cloning_enabled is False
+        assert config.cartesia_api_key == ""
+        assert config.clone_sample_seconds == 15
+        assert config.clone_timeout_seconds == 90
+
+    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on"])
+    def test_truthy_values_enable(self, value: str) -> None:
+        config = load_config(
+            base_env(VOICE_CLONING_ENABLED=value, CARTESIA_API_KEY="sk_cartesia")
+        )
+        assert config.voice_cloning_enabled is True
+        assert config.cartesia_api_key == "sk_cartesia"
+
+    @pytest.mark.parametrize("value", ["0", "false", "no", "off", "", "maybe"])
+    def test_falsy_or_garbage_values_disabled(self, value: str) -> None:
+        config = load_config(base_env(VOICE_CLONING_ENABLED=value))
+        assert config.voice_cloning_enabled is False
+
+    def test_enabled_without_api_key_is_config_error(self) -> None:
+        with pytest.raises(ConfigError) as exc:
+            load_config(base_env(VOICE_CLONING_ENABLED="true"))
+        message = str(exc.value)
+        assert "CARTESIA_API_KEY" in message
+        assert "VOICE_CLONING_ENABLED" in message
+        # must not leak any secrets
+        assert SECRET not in message
+        assert API_KEY not in message
+
+    def test_clone_sample_seconds_bounded(self) -> None:
+        assert (
+            load_config(base_env(CLONE_SAMPLE_SECONDS="20")).clone_sample_seconds == 20
+        )
+        for bad in ("9", "31", "abc"):
+            with pytest.raises(ConfigError, match="CLONE_SAMPLE_SECONDS"):
+                load_config(base_env(CLONE_SAMPLE_SECONDS=bad))
+
+    def test_clone_timeout_seconds_bounded(self) -> None:
+        assert load_config(base_env(CLONE_TIMEOUT_SECONDS="120")).clone_timeout_seconds == 120
+        for bad in ("0", "-1", "abc"):
+            with pytest.raises(ConfigError, match="CLONE_TIMEOUT_SECONDS"):
+                load_config(base_env(CLONE_TIMEOUT_SECONDS=bad))

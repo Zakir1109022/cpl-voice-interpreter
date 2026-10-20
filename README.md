@@ -17,7 +17,7 @@ cp .env.example .env
 # Optionally override STT_MODEL / LLM_MODEL / TTS_MODEL, voices, AGENT_NAME
 
 # Run tests and lint
-uv run pytest -q        # 105 tests
+uv run pytest -q        # 162 tests
 uv run ruff check .
 
 # Local development worker
@@ -65,6 +65,14 @@ Agent variables (`.env.example`, parsed by `agent/config.py`):
 | `LANGUAGE_PAIR` | `bn-en` | default room pair (`bn-en`, `bn-ja` or `en-ja`); a join request can override it |
 | `AGENT_NAME` | `meeting-interpreter` | worker registration / dispatch name |
 | `TOKEN_TTL_SECONDS` | `3600` | must be a positive integer |
+| `VOICE_CLONING_ENABLED` | `false` | per-participant dynamic voice preservation (see below) |
+| `CARTESIA_API_KEY` | — | required when voice cloning is enabled (clone API; not routed through LiveKit) |
+| `CLONE_SAMPLE_SECONDS` | `15` | seconds of clear speech to capture before cloning (10–30) |
+| `CLONE_TIMEOUT_SECONDS` | `90` | max seconds to wait for a usable sample before falling back |
+
+### Dynamic voice preservation
+
+With `VOICE_CLONING_ENABLED=true` (plus a `CARTESIA_API_KEY` from [play.cartesia.ai/keys](https://play.cartesia.ai/keys)), each participant who ticks the consent checkbox on the join screen gets a one-time Cartesia instant voice clone created from their first ~15 seconds of clear speech. Their translations are then synthesized in a voice that sounds like them instead of the fixed per-language voice; the first one or two utterances use the fallback voice while the clone is being created. Any failure (no consent, too little speech, API error) degrades silently to the fallback voices. Clones are deleted when the participant leaves the room or the agent shuts down, and raw enrollment audio is never stored beyond the enrollment window. Without a key, behavior is unchanged.
 
 Web variables (`web/.env.example`):
 
@@ -82,7 +90,8 @@ The web client must point at the **same LiveKit project** as the agent, otherwis
 ## Testing
 
 ```bash
-uv run pytest -q      # tests/test_config.py, test_routing.py, test_prompts.py
+uv run pytest -q      # tests/test_config.py, test_routing.py, test_prompts.py,
+                      # test_voice_enroll.py, test_dynamic_tts.py, test_agent_imports.py
 uv run ruff check .   # line length 100, rules: E, F, I, W, UP, B (web/ and docs/ excluded)
 
 cd web && npm run build   # compiles the Next.js client and type-checks /api/token

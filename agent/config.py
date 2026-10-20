@@ -19,6 +19,14 @@ DEFAULT_TTS_VOICE_JA = "aa3ccc4a-cfd8-405c-acf5-1873a527b006"
 DEFAULT_AGENT_NAME = "meeting-interpreter"
 DEFAULT_TOKEN_TTL_SECONDS = 3600
 
+# Dynamic voice preservation (per-participant voice cloning) defaults.
+DEFAULT_CLONE_SAMPLE_SECONDS = 15
+DEFAULT_CLONE_TIMEOUT_SECONDS = 90
+MIN_CLONE_SAMPLE_SECONDS = 10
+MAX_CLONE_SAMPLE_SECONDS = 30
+
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
 # language code -> env var name that overrides its TTS voice
 _VOICE_VARS: Mapping[str, tuple[str, str]] = {
     "en": ("TTS_VOICE_EN", DEFAULT_TTS_VOICE_EN),
@@ -48,6 +56,10 @@ class Config:
     tts_voices: Mapping[str, str] = field(default_factory=_default_voices)
     agent_name: str = DEFAULT_AGENT_NAME
     token_ttl_seconds: int = DEFAULT_TOKEN_TTL_SECONDS
+    voice_cloning_enabled: bool = False
+    cartesia_api_key: str = ""
+    clone_sample_seconds: int = DEFAULT_CLONE_SAMPLE_SECONDS
+    clone_timeout_seconds: int = DEFAULT_CLONE_TIMEOUT_SECONDS
 
     def voice_for(self, language: str) -> str:
         try:
@@ -89,6 +101,30 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         for language, (var, default) in _VOICE_VARS.items()
     }
 
+    cloning_raw = (source.get("VOICE_CLONING_ENABLED") or "").strip().lower()
+    cloning_enabled = cloning_raw in _TRUTHY
+    cartesia_api_key = (source.get("CARTESIA_API_KEY") or "").strip()
+    if cloning_enabled and not cartesia_api_key:
+        raise ConfigError(
+            "VOICE_CLONING_ENABLED is set but CARTESIA_API_KEY is missing. "
+            "Get a key at play.cartesia.ai/keys or disable voice cloning."
+        )
+
+    clone_sample_seconds = _parse_bounded_int(
+        source,
+        "CLONE_SAMPLE_SECONDS",
+        default=DEFAULT_CLONE_SAMPLE_SECONDS,
+        low=MIN_CLONE_SAMPLE_SECONDS,
+        high=MAX_CLONE_SAMPLE_SECONDS,
+    )
+    clone_timeout_seconds = _parse_bounded_int(
+        source,
+        "CLONE_TIMEOUT_SECONDS",
+        default=DEFAULT_CLONE_TIMEOUT_SECONDS,
+        low=1,
+        high=3600,
+    )
+
     return Config(
         livekit_url=url,
         livekit_api_key=source["LIVEKIT_API_KEY"].strip(),
@@ -99,4 +135,29 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         tts_voices=voices,
         agent_name=(source.get("AGENT_NAME") or "").strip() or DEFAULT_AGENT_NAME,
         token_ttl_seconds=ttl,
+        voice_cloning_enabled=cloning_enabled,
+        cartesia_api_key=cartesia_api_key,
+        clone_sample_seconds=clone_sample_seconds,
+        clone_timeout_seconds=clone_timeout_seconds,
     )
+
+
+def _parse_bounded_int(
+    source: Mapping[str, str],
+    name: str,
+    *,
+    default: int,
+    low: int,
+    high: int,
+) -> int:
+    """Parse an optional integer env var, enforcing an inclusive range."""
+    raw = (source.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ConfigError(f"{name} must be an integer number of seconds.") from None
+    if not low <= value <= high:
+        raise ConfigError(f"{name} must be between {low} and {high}.")
+    return value

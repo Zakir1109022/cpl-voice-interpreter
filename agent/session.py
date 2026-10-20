@@ -18,6 +18,7 @@ from livekit import rtc
 from livekit.agents import JobContext, room_io, utils
 
 from .config import Config
+from .dynamic_tts import DynamicVoiceTTS
 from .routing import (
     DEFAULT_PAIR,
     LanguagePair,
@@ -27,11 +28,21 @@ from .routing import (
     validate_language,
 )
 from .translation import build_session
+from .voice_enroll import (
+    VoiceEnroller,
+    collect_enrollment_sample,
+    has_voice_consent,
+    wait_for_audio_track,
+)
 
 logger = logging.getLogger("interpreter")
 
 STATUS_TOPIC = "interpreter-status"
 _MAX_STATUS_MESSAGE = 400
+
+# How long to wait for the participant's microphone track to subscribe before
+# giving up on capturing a voice sample.
+TRACK_WAIT_SECONDS = 30.0
 
 
 def safe_error_message(exc: object, secret_values: tuple[str, ...] = ()) -> str:
@@ -58,6 +69,12 @@ class InterpreterManager:
         self._tasks: set[asyncio.Task[object]] = set()
         self._translated_tracks: dict[str, str] = {}  # track sid -> target language
         self._closed = False
+        # Dynamic voice preservation: one enroller per room, clones cached by
+        # participant identity until they leave (then deleted for privacy).
+        self._enroller: VoiceEnroller | None = None
+        if config.voice_cloning_enabled and config.cartesia_api_key:
+            self._enroller = VoiceEnroller(api_key=config.cartesia_api_key)
+        self._enroll_tasks: dict[str, asyncio.Task[None]] = {}
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -86,6 +103,13 @@ class InterpreterManager:
         for session in sessions:
             await self._close_session(session, drain=True)
 
+        if self._enroller is not None:
+            # Privacy: every voice clone created for this room is deleted.
+            try:
+                await self._enroller.aclose()
+            except Exception:  # noqa: BLE001 - teardown must not raise
+                logger.warning("voice enroller cleanup failed", exc_info=True)
+
     # ------------------------------------------------------------------ events
 
     def on_participant_connected(self, participant: rtc.Participant) -> None:
@@ -96,6 +120,7 @@ class InterpreterManager:
         self._spawn(self._ensure_session(participant.identity))
 
     def on_participant_disconnected(self, participant: rtc.Participant) -> None:
+        self._cancel_enrollment(participant.identity)
         session = self._sessions.pop(participant.identity, None)
         if session is not None:
             logger.info(
@@ -103,6 +128,8 @@ class InterpreterManager:
                 participant.identity,
             )
             self._spawn(self._close_session(session, drain=False))
+        if self._enroller is not None:
+            self._spawn(self._enroller.forget(participant.identity))
         self._recompute_permissions()
 
     def on_attributes_changed(
@@ -110,6 +137,7 @@ class InterpreterManager:
     ) -> None:
         if "language" not in changed_attributes:
             return
+        self._cancel_enrollment(participant.identity)
         existing = self._sessions.pop(participant.identity, None)
         if existing is not None:
             logger.info(
@@ -216,6 +244,118 @@ class InterpreterManager:
             target,
             self._pair.code,
         )
+        self._maybe_start_enrollment(identity, source_language, session, participant)
+
+    # -------------------------------------------------------- voice enrollment
+
+    def _maybe_start_enrollment(
+        self,
+        identity: str,
+        source_language: str,
+        session: object,
+        participant: rtc.Participant,
+    ) -> None:
+        """Kick off per-participant voice cloning when enabled and consented."""
+        if self._enroller is None or not has_voice_consent(participant.attributes):
+            return
+
+        cached = self._enroller.get(identity)
+        if cached is not None:
+            # Returning participant: reuse the clone, no new sample needed.
+            if self._apply_cloned_voice(session, cached.voice_id):
+                self._spawn(self._send_status(identity, {"type": "voice_cloned"}))
+            return
+
+        task = asyncio.ensure_future(
+            self._enroll_voice(identity, source_language, session)
+        )
+        self._tasks.add(task)  # type: ignore[arg-type]
+        self._enroll_tasks[identity] = task
+
+        def _on_done(t: asyncio.Task[None], ident: str = identity) -> None:
+            self._tasks.discard(t)  # type: ignore[arg-type]
+            if self._enroll_tasks.get(ident) is t:
+                del self._enroll_tasks[ident]
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc is not None:
+                logger.error("voice enrollment task failed: %s", exc, exc_info=exc)
+
+        task.add_done_callback(_on_done)
+
+    def _cancel_enrollment(self, identity: str) -> None:
+        task = self._enroll_tasks.pop(identity, None)
+        if task is not None and not task.done():
+            task.cancel()
+
+    async def _enroll_voice(self, identity: str, source_language: str, session: object) -> None:
+        """Capture a sample, clone it, and swap the session to the cloned voice.
+
+        Every failure path logs and reports ``voice_cloning_error`` so the
+        session simply keeps its standard fallback voice.
+        """
+        assert self._enroller is not None
+        try:
+            voice = self._enroller.get(identity)
+            if voice is None:
+                wav = await self._capture_sample(identity)
+                if wav is None:
+                    logger.info(
+                        "no usable voice sample for %s; keeping the standard voice", identity
+                    )
+                    return
+                voice = await self._enroller.enroll(
+                    identity, language=source_language, wav=wav
+                )
+            if voice is None or not self._apply_cloned_voice(session, voice.voice_id):
+                await self._send_status(
+                    identity,
+                    {
+                        "type": "voice_cloning_error",
+                        "message": "Voice cloning is unavailable; using a standard voice.",
+                    },
+                )
+                return
+            await self._send_status(identity, {"type": "voice_cloned"})
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - enrollment must never take the session down
+            logger.error("voice enrollment failed for %s", identity, exc_info=True)
+            await self._send_status(
+                identity,
+                {
+                    "type": "voice_cloning_error",
+                    "message": "Voice cloning failed; using a standard voice.",
+                },
+            )
+
+    async def _capture_sample(self, identity: str) -> bytes | None:
+        """Record the participant's first seconds of clear speech as a WAV."""
+        participant = self._ctx.room.remote_participants.get(identity)
+        if participant is None:
+            return None
+        track = await wait_for_audio_track(
+            participant, timeout_seconds=TRACK_WAIT_SECONDS
+        )
+        if track is None:
+            logger.info("no subscribed audio track for %s; cannot enroll voice", identity)
+            return None
+        return await collect_enrollment_sample(
+            track,
+            target_seconds=self._config.clone_sample_seconds,
+            deadline_seconds=self._config.clone_timeout_seconds,
+        )
+
+    def _apply_cloned_voice(self, session: object, voice_id: str) -> bool:
+        """Swap a session's TTS to the cloned voice; False when unsupported."""
+        tts_node = getattr(session, "tts", None)
+        if isinstance(tts_node, DynamicVoiceTTS):
+            return tts_node.set_cloned_voice(voice_id)
+        logger.warning(
+            "session has no dynamic TTS; cloned voice %s not applied", voice_id
+        )
+        return False
 
     async def _close_session(self, session: object, *, drain: bool) -> None:
         try:

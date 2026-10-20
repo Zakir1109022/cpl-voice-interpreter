@@ -16,6 +16,7 @@ const DEFAULT_TOKEN_TTL_SECONDS = 3600;
 const LANGUAGE_PAIRS: Record<string, readonly string[]> = {
   "bn-en": ["bn", "en"],
   "bn-ja": ["bn", "ja"],
+  "en-ja": ["en", "ja"],
 };
 const DEFAULT_PAIR = "bn-en";
 

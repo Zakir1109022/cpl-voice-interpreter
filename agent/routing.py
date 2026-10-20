@@ -79,6 +79,7 @@ def _normalize_pair_code(first: str, second: str) -> str:
 LANGUAGE_PAIRS: dict[str, LanguagePair] = {
     _normalize_pair_code("bn", "en"): LanguagePair(_normalize_pair_code("bn", "en"), ("bn", "en")),
     _normalize_pair_code("bn", "ja"): LanguagePair(_normalize_pair_code("bn", "ja"), ("bn", "ja")),
+    _normalize_pair_code("en", "ja"): LanguagePair(_normalize_pair_code("en", "ja"), ("en", "ja")),
 }
 
 DEFAULT_PAIR_CODE = _normalize_pair_code("bn", "en")
@@ -135,7 +136,7 @@ def pair_from_metadata(metadata: str | None) -> LanguagePair:
         return DEFAULT_PAIR
     try:
         return parse_pair(candidate)
-    except UnsupportedPairError:
+    except (UnsupportedPairError, UnsupportedLanguageError):
         return DEFAULT_PAIR
 
 

@@ -13,9 +13,9 @@ from dataclasses import dataclass, field
 DEFAULT_STT_MODEL = "deepgram/nova-3"
 DEFAULT_LLM_MODEL = "openai/gpt-4o-mini"
 DEFAULT_TTS_MODEL = "cartesia/sonic-3"
-DEFAULT_TTS_VOICE_EN = "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
-DEFAULT_TTS_VOICE_BN = "f786b574-daa5-4673-aa0c-cbe3e8534c02"
-DEFAULT_TTS_VOICE_JA = "cb21b4af-0e46-44f7-9128-51be7f898311"
+DEFAULT_TTS_VOICE_EN = "47c38ca4-5f35-497b-b1a3-415245fb35e1"
+DEFAULT_TTS_VOICE_BN = "314be1d2-3d14-468d-be40-08a1af7df49d"
+DEFAULT_TTS_VOICE_JA = "aa3ccc4a-cfd8-405c-acf5-1873a527b006"
 DEFAULT_AGENT_NAME = "meeting-interpreter"
 DEFAULT_TOKEN_TTL_SECONDS = 3600
 

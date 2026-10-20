@@ -39,6 +39,8 @@ class TestTranslationInstructions:
             ("en", "bn", "English", "Bengali"),
             ("bn", "ja", "Bengali", "Japanese"),
             ("ja", "bn", "Japanese", "Bengali"),
+            ("en", "ja", "English", "Japanese"),
+            ("ja", "en", "Japanese", "English"),
         ],
     )
     def test_names_source_and_target_languages(
@@ -50,7 +52,7 @@ class TestTranslationInstructions:
 
     @pytest.mark.parametrize(
         ("source", "target"),
-        [("bn", "en"), ("bn", "ja"), ("ja", "bn"), ("en", "bn")],
+        [("bn", "en"), ("bn", "ja"), ("ja", "bn"), ("en", "bn"), ("en", "ja"), ("ja", "en")],
     )
     def test_direction_prompts_differ(self, source: str, target: str) -> None:
         assert translation_instructions(source, target) != translation_instructions(target, source)

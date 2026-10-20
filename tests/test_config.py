@@ -78,10 +78,10 @@ class TestValuesAndDefaults:
         # producing audio", so these must match real Cartesia voices.
         # en/bn: LiveKit docs voice list; ja: Cartesia Japanese voice library
         # ("Yuzuki"), verified to synthesize ja via LiveKit Inference.
-        assert config.voice_for("en") == "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
-        assert config.voice_for("bn") == "f786b574-daa5-4673-aa0c-cbe3e8534c02"
+        assert config.voice_for("en") == "47c38ca4-5f35-497b-b1a3-415245fb35e1"
+        assert config.voice_for("bn") == "314be1d2-3d14-468d-be40-08a1af7df49d"
         assert config.voice_for("ja") == DEFAULT_TTS_VOICE_JA
-        assert DEFAULT_TTS_VOICE_JA == "cb21b4af-0e46-44f7-9128-51be7f898311"
+        assert DEFAULT_TTS_VOICE_JA == "aa3ccc4a-cfd8-405c-acf5-1873a527b006"
         # every supported language must resolve to a distinct, non-empty voice
         voices = {code: config.voice_for(code) for code in ("bn", "en", "ja")}
         assert all(voices.values())

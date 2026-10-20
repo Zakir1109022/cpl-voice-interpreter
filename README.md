@@ -1,6 +1,6 @@
 # Meeting Interpreter
 
-A real-time bidirectional meeting interpreter built with [LiveKit Agents](https://docs.livekit.io/agents/) (Python) and a Next.js (TypeScript) web client. A room runs one **language pair** — Bengali ⇄ English (`bn-en`) or Bengali ⇄ Japanese (`bn-ja`). For each remote participant, the agent creates a dedicated translation session that hears their speech in their selected language and publishes translated audio into the room under `translated-<target>`; SFU-level track subscription permissions ensure each participant only receives translations into their selected language.
+A real-time bidirectional meeting interpreter built with [LiveKit Agents](https://docs.livekit.io/agents/) (Python) and a Next.js (TypeScript) web client. A room runs one **language pair** — Bengali ⇄ English (`bn-en`), Bengali ⇄ Japanese (`bn-ja`) or English ⇄ Japanese (`en-ja`). For each remote participant, the agent creates a dedicated translation session that hears their speech in their selected language and publishes translated audio into the room under `translated-<target>`; SFU-level track subscription permissions ensure each participant only receives translations into their selected language.
 
 
 ## Quickstart
@@ -17,7 +17,7 @@ cp .env.example .env
 # Optionally override STT_MODEL / LLM_MODEL / TTS_MODEL, voices, AGENT_NAME
 
 # Run tests and lint
-uv run pytest -q        # 95 tests
+uv run pytest -q        # 105 tests
 uv run ruff check .
 
 # Local development worker
@@ -46,6 +46,7 @@ Join with an identity, choose a language pair and your language, then press **St
 
 - **Bengali ⇄ English** (`bn-en`): English speakers receive `translated-bn`, Bengali speakers receive `translated-en`
 - **Bengali ⇄ Japanese** (`bn-ja`): Bengali speakers receive `translated-ja`, Japanese speakers receive `translated-bn`
+- **English ⇄ Japanese** (`en-ja`): English speakers receive `translated-ja`, Japanese speakers receive `translated-en`
 
 
 ## Configuration
@@ -58,10 +59,10 @@ Agent variables (`.env.example`, parsed by `agent/config.py`):
 | `STT_MODEL` | `deepgram/nova-3` | LiveKit Inference model ID |
 | `LLM_MODEL` | `openai/gpt-4o-mini` | LiveKit Inference model ID |
 | `TTS_MODEL` | `cartesia/sonic-3` | LiveKit Inference model ID |
-| `TTS_VOICE_BN` | `f786b574-daa5-4673-aa0c-cbe3e8534c02` | Cartesia voice for Bengali output |
-| `TTS_VOICE_EN` | `9626c31c-bec5-4cca-baa8-f8ba9e84c8bc` | Cartesia voice for English output |
-| `TTS_VOICE_JA` | `cb21b4af-0e46-44f7-9128-51be7f898311` | Cartesia voice for Japanese output ("Yuzuki") |
-| `LANGUAGE_PAIR` | `bn-en` | default room pair (`bn-en` or `bn-ja`); a join request can override it |
+| `TTS_VOICE_BN` | `314be1d2-3d14-468d-be40-08a1af7df49d` | Cartesia voice for Bengali output |
+| `TTS_VOICE_EN` | `47c38ca4-5f35-497b-b1a3-415245fb35e1` | Cartesia voice for English output |
+| `TTS_VOICE_JA` | `aa3ccc4a-cfd8-405c-acf5-1873a527b006` | Cartesia voice for Japanese output ("Yuzuki") |
+| `LANGUAGE_PAIR` | `bn-en` | default room pair (`bn-en`, `bn-ja` or `en-ja`); a join request can override it |
 | `AGENT_NAME` | `meeting-interpreter` | worker registration / dispatch name |
 | `TOKEN_TTL_SECONDS` | `3600` | must be a positive integer |
 

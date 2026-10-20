@@ -16,7 +16,7 @@ import type { Participant, RemoteParticipant } from "livekit-client";
 const STATUS_TOPIC = "interpreter-status";
 
 type Language = "bn" | "en" | "ja";
-type PairCode = "bn-en" | "bn-ja";
+type PairCode = "bn-en" | "bn-ja" | "en-ja";
 type StatusTone = "success" | "warning" | "error" | "info";
 
 type InterpreterStatus = {
@@ -39,8 +39,9 @@ const LANGUAGE_INFO: Record<Language, { code: string; name: string; native: stri
 const PAIR_INFO: Record<PairCode, { languages: readonly [Language, Language]; label: string }> = {
   "bn-en": { languages: ["bn", "en"], label: "Bengali ⇄ English" },
   "bn-ja": { languages: ["bn", "ja"], label: "Bengali ⇄ Japanese" },
+  "en-ja": { languages: ["en", "ja"], label: "English ⇄ Japanese" },
 };
-const PAIR_ORDER: readonly PairCode[] = ["bn-en", "bn-ja"];
+const PAIR_ORDER: readonly PairCode[] = ["bn-en", "bn-ja", "en-ja"];
 const DEFAULT_PAIR: PairCode = "bn-en";
 
 const STATUS_PRESENTATION: Record<string, { title: string; tone: StatusTone }> = {
@@ -55,7 +56,7 @@ function isLanguage(value: unknown): value is Language {
 }
 
 function isPair(value: unknown): value is PairCode {
-  return value === "bn-en" || value === "bn-ja";
+  return value === "bn-en" || value === "bn-ja" || value === "en-ja";
 }
 
 function languagesOf(pair: PairCode): readonly Language[] {

@@ -21,6 +21,7 @@ from agent.routing import (
 
 BN_EN = LANGUAGE_PAIRS["bn-en"]
 BN_JA = LANGUAGE_PAIRS["bn-ja"]
+EN_JA = LANGUAGE_PAIRS["en-ja"]
 
 
 class TestValidateLanguage:
@@ -57,8 +58,8 @@ class TestValidateLanguage:
 
 
 class TestLanguagePairs:
-    def test_registry_contains_both_pairs(self) -> None:
-        assert set(LANGUAGE_PAIRS) == {"bn-en", "bn-ja"}
+    def test_registry_contains_all_pairs(self) -> None:
+        assert set(LANGUAGE_PAIRS) == {"bn-en", "bn-ja", "en-ja"}
 
     def test_default_pair_is_bengali_english(self) -> None:
         assert DEFAULT_PAIR_CODE == "bn-en"
@@ -73,6 +74,8 @@ class TestLanguagePairs:
             ("bn-ja", "bn-ja"),
             ("ja-bn", "bn-ja"),
             (" ja , bn ", "bn-ja"),
+            ("en-ja", "en-ja"),
+            ("ja-en", "en-ja"),
         ],
     )
     def test_parse_pair_normalizes(self, value: str, expected_code: str) -> None:
@@ -86,7 +89,7 @@ class TestLanguagePairs:
         with pytest.raises(UnsupportedPairError, match="required"):
             parse_pair(bad)
 
-    @pytest.mark.parametrize("bad", ["en-ja", "bn", "bn-en-ja", "bn-bn", "bn-fr", "xx"])
+    @pytest.mark.parametrize("bad", ["en-fr", "bn", "bn-en-ja", "bn-bn", "bn-fr", "xx"])
     def test_parse_pair_rejects_unsupported(self, bad: str) -> None:
         with pytest.raises((UnsupportedPairError, UnsupportedLanguageError)):
             parse_pair(bad)
@@ -119,7 +122,10 @@ class TestPairFromMetadata:
         assert pair_from_metadata("bn-ja") == BN_JA
 
     def test_unknown_json_pair_falls_back(self) -> None:
-        assert pair_from_metadata('{"pair": "en-ja"}') == DEFAULT_PAIR
+        assert pair_from_metadata('{"pair": "en-fr"}') == DEFAULT_PAIR
+
+    def test_reads_english_japanese_pair(self) -> None:
+        assert pair_from_metadata('{"pair": "ja-en"}') == EN_JA
 
 
 class TestTargetLanguage:
@@ -133,8 +139,12 @@ class TestTargetLanguage:
         assert target_language("ja", BN_JA) == "bn"
         assert target_language("bn", BN_JA) == "ja"
 
+    def test_english_japanese_pair_maps_both_directions(self) -> None:
+        assert target_language("en", EN_JA) == "ja"
+        assert target_language("ja", EN_JA) == "en"
+
     def test_both_directions_are_crossed(self) -> None:
-        for pair in (BN_EN, BN_JA):
+        for pair in (BN_EN, BN_JA, EN_JA):
             for source in pair.languages:
                 assert target_language(source, pair) != source
 

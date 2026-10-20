@@ -8,6 +8,7 @@ from agent.config import (
     DEFAULT_LLM_MODEL,
     DEFAULT_STT_MODEL,
     DEFAULT_TTS_MODEL,
+    DEFAULT_TTS_VOICE_JA,
     ConfigError,
     load_config,
 )
@@ -69,16 +70,22 @@ class TestValuesAndDefaults:
         assert config.stt_model == DEFAULT_STT_MODEL
         assert config.llm_model == DEFAULT_LLM_MODEL
         assert config.tts_model == DEFAULT_TTS_MODEL
-        assert config.bengali_language == "bn"
-        assert config.english_language == "en"
+        assert set(config.tts_voices) == {"bn", "en", "ja"}
 
     def test_voice_defaults_match_documented_cartesia_ids(self) -> None:
         config = load_config(base_env())
         # Cartesia rejects unknown voice IDs with "TTS provider completed without
-        # producing audio", so these must match the documented voice library exactly
-        # (https://docs.livekit.io/agents/models/tts/cartesia/#voices).
+        # producing audio", so these must match real Cartesia voices.
+        # en/bn: LiveKit docs voice list; ja: Cartesia Japanese voice library
+        # ("Yuzuki"), verified to synthesize ja via LiveKit Inference.
         assert config.voice_for("en") == "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
         assert config.voice_for("bn") == "f786b574-daa5-4673-aa0c-cbe3e8534c02"
+        assert config.voice_for("ja") == DEFAULT_TTS_VOICE_JA
+        assert DEFAULT_TTS_VOICE_JA == "cb21b4af-0e46-44f7-9128-51be7f898311"
+        # every supported language must resolve to a distinct, non-empty voice
+        voices = {code: config.voice_for(code) for code in ("bn", "en", "ja")}
+        assert all(voices.values())
+        assert len(set(voices.values())) == 3
 
     def test_model_overrides(self) -> None:
         config = load_config(
@@ -88,6 +95,7 @@ class TestValuesAndDefaults:
                 TTS_MODEL="custom/tts",
                 TTS_VOICE_BN="voice-bn",
                 TTS_VOICE_EN="voice-en",
+                TTS_VOICE_JA="voice-ja",
                 AGENT_NAME="custom-agent",
             )
         )
@@ -96,6 +104,7 @@ class TestValuesAndDefaults:
         assert config.tts_model == "custom/tts"
         assert config.voice_for("bn") == "voice-bn"
         assert config.voice_for("en") == "voice-en"
+        assert config.voice_for("ja") == "voice-ja"
         assert config.agent_name == "custom-agent"
 
     @pytest.mark.parametrize("bad_ttl", ["abc", "0", "-5"])

@@ -15,13 +15,15 @@ import type { Participant, RemoteParticipant } from "livekit-client";
 
 const STATUS_TOPIC = "interpreter-status";
 
-type Language = "bn" | "en";
+type Language = "bn" | "en" | "ja";
+type PairCode = "bn-en" | "bn-ja";
 type StatusTone = "success" | "warning" | "error" | "info";
 
 type InterpreterStatus = {
   type: string;
   message?: string;
   stage?: string;
+  pair?: PairCode;
   source_language?: Language;
   target_language?: Language;
 };
@@ -29,7 +31,17 @@ type InterpreterStatus = {
 const LANGUAGE_INFO: Record<Language, { code: string; name: string; native: string }> = {
   en: { code: "EN", name: "English", native: "English" },
   bn: { code: "BN", name: "Bengali", native: "বাংলা" },
+  ja: { code: "JA", name: "Japanese", native: "日本語" },
 };
+
+// One room runs exactly one pair; a participant picks one language and hears the
+// other. Keep the same canonical order as the agent/token (bn < en < ja).
+const PAIR_INFO: Record<PairCode, { languages: readonly [Language, Language]; label: string }> = {
+  "bn-en": { languages: ["bn", "en"], label: "Bengali ⇄ English" },
+  "bn-ja": { languages: ["bn", "ja"], label: "Bengali ⇄ Japanese" },
+};
+const PAIR_ORDER: readonly PairCode[] = ["bn-en", "bn-ja"];
+const DEFAULT_PAIR: PairCode = "bn-en";
 
 const STATUS_PRESENTATION: Record<string, { title: string; tone: StatusTone }> = {
   session_ready: { title: "Interpreter active", tone: "success" },
@@ -39,7 +51,15 @@ const STATUS_PRESENTATION: Record<string, { title: string; tone: StatusTone }> =
 };
 
 function isLanguage(value: unknown): value is Language {
-  return value === "bn" || value === "en";
+  return value === "bn" || value === "en" || value === "ja";
+}
+
+function isPair(value: unknown): value is PairCode {
+  return value === "bn-en" || value === "bn-ja";
+}
+
+function languagesOf(pair: PairCode): readonly Language[] {
+  return PAIR_INFO[pair].languages;
 }
 
 function languageOf(participant: Participant): Language | null {
@@ -47,8 +67,9 @@ function languageOf(participant: Participant): Language | null {
   return isLanguage(value) ? value : null;
 }
 
-function targetOf(language: Language): Language {
-  return language === "en" ? "bn" : "en";
+function targetOf(language: Language, pair: PairCode): Language {
+  const [first, second] = PAIR_INFO[pair].languages;
+  return language === first ? second : first;
 }
 
 function displayNameOf(participant: Participant): string {
@@ -197,7 +218,15 @@ function useInterpreterStatus() {
   return status;
 }
 
-function ParticipantRow({ participant, isLocal }: { participant: Participant; isLocal: boolean }) {
+function ParticipantRow({
+  participant,
+  isLocal,
+  pair,
+}: {
+  participant: Participant;
+  isLocal: boolean;
+  pair: PairCode;
+}) {
   const speaking = useIsSpeaking(participant);
   const isAgent = participant.kind === ParticipantKind.AGENT;
   const language = languageOf(participant);
@@ -206,11 +235,11 @@ function ParticipantRow({ participant, isLocal }: { participant: Participant; is
   const avatarVariant = isAgent ? "ai" : (language ?? "unknown");
 
   const subtitle = isAgent
-    ? "Bengali ⇄ English interpreter"
+    ? `${PAIR_INFO[pair].label} interpreter`
     : language
       ? isLocal
-        ? `You speak ${LANGUAGE_INFO[language].name} · you hear ${LANGUAGE_INFO[targetOf(language)].name}`
-        : `Hears ${LANGUAGE_INFO[targetOf(language)].name}`
+        ? `You speak ${LANGUAGE_INFO[language].name} · you hear ${LANGUAGE_INFO[targetOf(language, pair)].name}`
+        : `Hears ${LANGUAGE_INFO[targetOf(language, pair)].name}`
       : "Waiting for a language selection";
 
   return (
@@ -264,6 +293,13 @@ function RoomContent() {
   const micOn = local.isMicrophoneEnabled;
   const connection = connectionPresentation(connectionState);
 
+  const localPair = local.localParticipant.attributes?.pair;
+  const pair: PairCode = isPair(localPair)
+    ? localPair
+    : status?.pair && isPair(status.pair)
+      ? status.pair
+      : DEFAULT_PAIR;
+
   const ordered = useMemo(() => {
     const rank = (participant: Participant) => {
       if (participant.identity === localIdentity) return 0;
@@ -310,7 +346,7 @@ function RoomContent() {
           </span>
           <div>
             <h1 className="brand-title">Meeting Interpreter</h1>
-            <p className="brand-sub">Live Bengali ⇄ English interpretation</p>
+            <p className="brand-sub">Live {PAIR_INFO[pair].label} interpretation</p>
           </div>
         </div>
         <div className="topbar-meta">
@@ -335,6 +371,7 @@ function RoomContent() {
               key={participant.identity}
               participant={participant}
               isLocal={participant.identity === localIdentity}
+              pair={pair}
             />
           ))}
         </ul>
@@ -409,7 +446,8 @@ function RoomContent() {
 
 export default function Home() {
   const [identity, setIdentity] = useState("");
-  const [language, setLanguage] = useState<Language>("en");
+  const [pair, setPair] = useState<PairCode>(DEFAULT_PAIR);
+  const [language, setLanguage] = useState<Language>(languagesOf(DEFAULT_PAIR)[0]);
   const [token, setToken] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -420,6 +458,14 @@ export default function Home() {
     if (url) return url;
     return process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
   }, [url]);
+
+  const changePair = (next: PairCode) => {
+    setPair(next);
+    const options = languagesOf(next);
+    if (!options.includes(language)) setLanguage(options[0]);
+  };
+
+  const languageOptions = languagesOf(pair);
 
   const fetchToken = async () => {
     const entered = (identityInput.current?.value ?? identity).trim();
@@ -433,7 +479,7 @@ export default function Home() {
       const res = await fetch("/api/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identity: entered, language }),
+        body: JSON.stringify({ identity: entered, language, pair }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -489,14 +535,32 @@ export default function Home() {
           />
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+          <span className="section-label">Language pair</span>
+          <select
+            value={pair}
+            onChange={(e) => changePair(e.target.value as PairCode)}
+            className="input"
+          >
+            {PAIR_ORDER.map((option) => (
+              <option key={option} value={option}>
+                {PAIR_INFO[option].label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
           <span className="section-label">Your language</span>
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value as Language)}
             className="input"
           >
-            <option value="en">English (will receive Bengali translation)</option>
-            <option value="bn">Bengali (will receive English translation)</option>
+            {languageOptions.map((option) => (
+              <option key={option} value={option}>
+                {LANGUAGE_INFO[option].name} (will receive{" "}
+                {LANGUAGE_INFO[targetOf(option, pair)].name} translation)
+              </option>
+            ))}
           </select>
         </label>
         <button type="submit" className="btn btn--primary" disabled={loading} style={{ justifyContent: "center" }}>

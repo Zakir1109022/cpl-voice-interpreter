@@ -7,10 +7,17 @@ import {
 import { NextResponse } from "next/server";
 
 const DEFAULT_ROOM_NAME = "interpreter-room";
-const DEFAULT_AGENT_NAME = "bengali-english-interpreter";
+const DEFAULT_AGENT_NAME = "meeting-interpreter";
 const DEFAULT_TOKEN_TTL_SECONDS = 3600;
 
-const SUPPORTED_LANGUAGES = ["bn", "en"];
+// Each room runs exactly one language pair; a participant picks one language from
+// the pair and hears the other. Keep the canonical order (bn < en < ja) so that
+// "ja-bn" and "bn-ja" are treated as the same pair.
+const LANGUAGE_PAIRS: Record<string, readonly string[]> = {
+  "bn-en": ["bn", "en"],
+  "bn-ja": ["bn", "ja"],
+};
+const DEFAULT_PAIR = "bn-en";
 
 // LiveKit identities and room names are user-supplied, so keep them to a
 // conservative character set rather than forwarding arbitrary strings.
@@ -37,15 +44,58 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** Canonicalize a pair code ("JA-BN", "bn_ja", "bn, ja" -> "bn-ja"), or "" if unknown. */
+function normalizePair(value: string): string {
+  const parts = value
+    .toLowerCase()
+    .replace(/[_,]/g, "-")
+    .split("-")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (parts.length !== 2 || parts[0] === parts[1]) return "";
+  const code = [`${parts[0]}-${parts[1]}`, `${parts[1]}-${parts[0]}`].find(
+    (candidate) => candidate in LANGUAGE_PAIRS,
+  );
+  return code ?? "";
+}
+
+function pairMetadata(pair: string): string {
+  return JSON.stringify({ pair });
+}
+
+/** Recover a canonical pair from dispatch/room metadata, or "" when absent. */
+function pairFromMetadata(metadata: string | undefined): string {
+  if (!metadata) return "";
+  const raw = metadata.trim();
+  if (!raw) return "";
+  if (raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && "pair" in parsed) {
+        return normalizePair(asString((parsed as { pair?: unknown }).pair));
+      }
+    } catch {
+      return "";
+    }
+    return "";
+  }
+  return normalizePair(raw);
+}
+
 /**
  * Creates a token for one participant and makes sure the interpreter agent is
  * dispatched to the room.
  *
+ * The room's language pair flows to the agent through two channels: the token's
+ * `roomConfig.metadata` (applied atomically when LiveKit creates the room) and,
+ * for rooms that already exist, the dispatch metadata. Because one room runs one
+ * pair, a join that requests a conflicting pair is rejected instead of silently
+ * mis-translating.
+ *
  * Dispatch is deduplicated two ways: the token carries a `roomConfig.agents`
- * entry (applied atomically when LiveKit creates the room) and an explicit
- * dispatch is created only when none is recorded for this agent name. Two jobs
- * in one room would each publish translated audio, so a second dispatch must
- * never be created for a room that already has one.
+ * entry and an explicit dispatch is created only when none is recorded for this
+ * agent name. Two jobs in one room would each publish translated audio, so a
+ * second dispatch must never be created for a room that already has one.
  */
 export async function POST(request: Request) {
   const apiKey = asString(process.env.LIVEKIT_API_KEY);
@@ -74,8 +124,22 @@ export async function POST(request: Request) {
 
   const payload = (body ?? {}) as Record<string, unknown>;
   const identity = asString(payload.identity);
-  const language = asString(payload.language);
+  const language = asString(payload.language).toLowerCase();
   const room = asString(payload.room) || asString(process.env.LIVEKIT_ROOM_NAME) || DEFAULT_ROOM_NAME;
+
+  const requestedPair = asString(payload.pair)
+    ? normalizePair(asString(payload.pair))
+    : asString(process.env.LANGUAGE_PAIR)
+      ? normalizePair(asString(process.env.LANGUAGE_PAIR))
+      : DEFAULT_PAIR;
+  const pair = requestedPair || "";
+  if (!pair) {
+    return errorResponse(
+      `pair must be one of: ${Object.keys(LANGUAGE_PAIRS).join(", ")}`,
+      400,
+    );
+  }
+  const pairLanguages = LANGUAGE_PAIRS[pair];
 
   if (!IDENTITY_PATTERN.test(identity)) {
     return errorResponse(
@@ -83,8 +147,8 @@ export async function POST(request: Request) {
       400,
     );
   }
-  if (!SUPPORTED_LANGUAGES.includes(language)) {
-    return errorResponse(`language must be one of: ${SUPPORTED_LANGUAGES.join(", ")}`, 400);
+  if (!pairLanguages.includes(language)) {
+    return errorResponse(`language must be one of: ${pairLanguages.join(", ")}`, 400);
   }
   if (!ROOM_PATTERN.test(room)) {
     return errorResponse("room must be 1-64 characters using letters, digits, '_' or '-'", 400);
@@ -92,20 +156,30 @@ export async function POST(request: Request) {
 
   try {
     const httpUrl = toHttpUrl(livekitUrl);
+    const metadata = pairMetadata(pair);
 
     // listDispatch fails when the room does not exist yet, in which case the
     // token's roomConfig dispatches the agent as the room is created
     const dispatchClient = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
     const dispatches = await dispatchClient.listDispatch(room).catch(() => null);
-    if (dispatches !== null && !dispatches.some((d) => d.agentName === agentName)) {
-      await dispatchClient.createDispatch(room, agentName);
+    const existing = dispatches?.find((d) => d.agentName === agentName);
+    if (existing) {
+      const existingPair = pairFromMetadata(existing.metadata);
+      if (existingPair && existingPair !== pair) {
+        return errorResponse(
+          `Room '${room}' is already set to language pair '${existingPair}'`,
+          409,
+        );
+      }
+    } else if (dispatches !== null) {
+      await dispatchClient.createDispatch(room, agentName, { metadata });
     }
 
     const token = new AccessToken(apiKey, apiSecret, {
       identity,
       name: identity,
       ttl: tokenTtlSeconds(),
-      attributes: { language },
+      attributes: { language, pair },
     });
     token.addGrant({
       roomJoin: true,
@@ -115,7 +189,8 @@ export async function POST(request: Request) {
       canPublishData: true,
     });
     token.roomConfig = new RoomConfiguration({
-      agents: [new RoomAgentDispatch({ agentName })],
+      metadata,
+      agents: [new RoomAgentDispatch({ agentName, metadata })],
     });
 
     return NextResponse.json({ token: await token.toJwt(), url: livekitUrl });

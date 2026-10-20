@@ -20,7 +20,7 @@ Set:
 
 Optional:
 - `LIVEKIT_ROOM_NAME` - shared meeting room, default `interpreter-room`
-- `AGENT_NAME` - worker to dispatch, default `bengali-english-interpreter` (must match the Python agent)
+- `AGENT_NAME` - worker to dispatch, default `meeting-interpreter` (must match the Python agent)
 - `TOKEN_TTL_SECONDS` - token lifetime, default `3600`
 
 The credentials must belong to the same LiveKit project the Python agent worker runs against.

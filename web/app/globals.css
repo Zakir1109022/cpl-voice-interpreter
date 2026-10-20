@@ -234,6 +234,10 @@ main {
   background: linear-gradient(140deg, #0d9488, #2dd4bf);
 }
 
+.avatar--ja {
+  background: linear-gradient(140deg, #db2777, #fb7185);
+}
+
 .avatar--ai {
   background: linear-gradient(140deg, #7c3aed, #c084fc);
 }
@@ -336,6 +340,12 @@ main {
   color: #ccfbf1;
   border-color: rgba(45, 212, 191, 0.4);
   background: rgba(13, 148, 136, 0.2);
+}
+
+.chip--ja {
+  color: #fce7f3;
+  border-color: rgba(251, 113, 133, 0.4);
+  background: rgba(219, 39, 119, 0.2);
 }
 
 .chip--warn {

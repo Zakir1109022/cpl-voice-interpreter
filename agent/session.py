@@ -19,8 +19,9 @@ from livekit.agents import JobContext, room_io, utils
 
 from .config import Config
 from .routing import (
+    DEFAULT_PAIR,
+    LanguagePair,
     UnsupportedLanguageError,
-    target_language,
     target_language_from_track_name,
     track_name_for,
     validate_language,
@@ -49,9 +50,10 @@ def safe_error_message(exc: object, secret_values: tuple[str, ...] = ()) -> str:
 class InterpreterManager:
     """Owns per-participant translation sessions for one room."""
 
-    def __init__(self, ctx: JobContext, config: Config) -> None:
+    def __init__(self, ctx: JobContext, config: Config, pair: LanguagePair = DEFAULT_PAIR) -> None:
         self._ctx = ctx
         self._config = config
+        self._pair = pair
         self._sessions: dict[str, object] = {}
         self._tasks: set[asyncio.Task[object]] = set()
         self._translated_tracks: dict[str, str] = {}  # track sid -> target language
@@ -156,14 +158,13 @@ class InterpreterManager:
 
         try:
             source_language = validate_language(participant.attributes.get("language"))
+            target = self._pair.partner(source_language)
         except UnsupportedLanguageError as exc:
             logger.warning("participant %s has no usable language: %s", identity, exc)
             await self._send_status(
                 identity, {"type": "language_error", "message": str(exc)}
             )
             return
-
-        target = target_language(source_language)
 
         room_options = room_io.RoomOptions(
             audio_input=True,
@@ -179,7 +180,7 @@ class InterpreterManager:
 
         session = None
         try:
-            session, agent = build_session(source_language, self._config)
+            session, agent = build_session(source_language, self._pair, self._config)
             session.on("error", lambda ev, ident=identity: self._on_session_error(ident, ev))
             await session.start(agent=agent, room=self._ctx.room, room_options=room_options)
         except Exception as exc:  # noqa: BLE001 - contain any startup failure per participant
@@ -203,12 +204,17 @@ class InterpreterManager:
             identity,
             {
                 "type": "session_ready",
+                "pair": self._pair.code,
                 "source_language": source_language,
                 "target_language": target,
             },
         )
         logger.info(
-            "translation session ready for %s (%s -> %s)", identity, source_language, target
+            "translation session ready for %s (%s -> %s, pair=%s)",
+            identity,
+            source_language,
+            target,
+            self._pair.code,
         )
 
     async def _close_session(self, session: object, *, drain: bool) -> None:
